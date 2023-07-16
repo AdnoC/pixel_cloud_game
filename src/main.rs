@@ -13,7 +13,7 @@ use bevy::{
     // render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
-    render::camera::ScalingMode,
+    render::camera::ScalingMode, window::CursorGrabMode, input::mouse::MouseMotion,
 };
 use image::{io::Reader as ImageReader, Rgba, RgbaImage};
 use palette::{IntoColor, Srgb};
@@ -38,13 +38,16 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, rotate)
+        .add_systems(Update, (mouse_grab, mouse_input, rotate))
         .run();
 }
 
 /// A marker component for our shapes so we can query them separately from the ground plane
 #[derive(Component)]
 struct Shape;
+
+#[derive(Component)]
+struct MyParent;
 
 #[derive(Component)]
 struct MyCamera;
@@ -56,6 +59,7 @@ fn setup(
 ) {
     let mut rng = rand::thread_rng();
 
+    // let img = ImageReader::open("zelda-box.jpg")
     let img = ImageReader::open("goomba.png")
         .expect("could not find image")
         .decode()
@@ -63,15 +67,17 @@ fn setup(
         .to_rgba8();
     let height = img.height();
     let width = img.width();
-    const RADIUS: f32 = 0.60;
+    const RADIUS: f32 = 0.55;
     let max_distance = u32::max(height, width) as f32;
 
+    let parent = commands.spawn((MyParent, SpatialBundle::default())).id();
     let mut mats: std::collections::HashMap<Rgba<u8>, Handle<StandardMaterial>> =
         std::collections::HashMap::new();
     let sphere_mesh = meshes.add(Mesh::from(shape::UVSphere {
         radius: RADIUS,
         ..default()
     }));
+    let mut children = Vec::new();
     for (px, py, pixel) in img.enumerate_pixels() {
         if pixel[3] < 128 {
             continue;
@@ -101,7 +107,7 @@ fn setup(
         let max_radius_distance = (height as f32 / 2.0).powi(2) + (width as f32 / 2.0).powi(2);
         let max_z = (max_radius_distance - x.powi(2) - y.powi(2)).sqrt();
 
-        commands.spawn((
+        let shape = commands.spawn((
             PbrBundle {
                 mesh: sphere_mesh.clone(),
                 material,
@@ -117,8 +123,11 @@ fn setup(
                 ..default()
             },
             Shape,
-        ));
+        )).id();
+        children.push(shape);
     }
+
+    commands.entity(parent).push_children(&children);
 
     // commands.insert_resource(CurrentImage(img));
 
@@ -162,12 +171,42 @@ fn setup(
     ));
 }
 
-fn rotate(mut query: Query<&mut Transform, With<MyCamera>>, time: Res<Time>) {
-    for mut transform in &mut query {
-        transform.translate_around(
-            Vec3::new(0., 0., 0.),
-            Quat::from_rotation_y(TAU / 4.0 * time.delta_seconds()),
-        );
-        transform.look_at(Vec3::new(0., 0., 0.), -Vec3::Y);
+fn rotate(mut query: Query<&mut Transform, With<MyParent>>, time: Res<Time>) {
+    // for mut transform in &mut query {
+    //     transform.rotate_y(time.delta_seconds());
+    // }
+}
+
+fn mouse_grab(mouse_button_input: Res<Input<MouseButton>>, mut windows: Query<&mut Window>) {
+    let mut window = windows.single_mut();
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        window.cursor.visible = false;
+        window.cursor.grab_mode = CursorGrabMode::Locked;
+    }
+    if mouse_button_input.just_released(MouseButton::Left) {
+        window.cursor.visible = true;
+        window.cursor.grab_mode = CursorGrabMode::None;
+    }
+}
+
+fn mouse_input(mouse_button_input: Res<Input<MouseButton>>, mut mouse_motion_events: EventReader<MouseMotion>, mut query: Query<&mut Transform, With<MyParent>>, time: Res<Time>) {
+    if mouse_button_input.pressed(MouseButton::Left) {
+        for event in mouse_motion_events.iter() {
+            let dx = event.delta.y;
+            let dy = -event.delta.x;
+            let mut transform = query.single_mut();
+            transform.rotate_x(dx * 0.1 * time.delta_seconds());
+            transform.rotate_y(dy * 0.1 * time.delta_seconds());
+
+            // transform.translate_around(
+            //     Vec3::new(0., 0., 0.),
+            //     Quat::from_rotation_y(dx * 0.1 * time.delta_seconds()),
+            //     );
+            // transform.translate_around(
+            //     Vec3::new(0., 0., 0.),
+            //     Quat::from_rotation_x(dy * 0.1 * time.delta_seconds()),
+            //     );
+            // transform.look_at(Vec3::new(0., 0., 0.), -Vec3::Y);
+        }
     }
 }
