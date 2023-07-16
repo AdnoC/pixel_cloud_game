@@ -2795,10 +2795,12 @@ name = "pixel_cloud_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bytemuck",
  "image",
  "palette",
  "rand",
  "rand_distr",
+ "rayon",
 ]
 
 [[package]]
