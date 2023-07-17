@@ -44,28 +44,6 @@ use palette::{IntoColor, Srgb};
 #[derive(Default, Resource)]
 struct CurrentImage(RgbaImage);
 
-fn main() {
-    App::new()
-        .add_plugins((
-            DefaultPlugins
-                .set(ImagePlugin::default_nearest())
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        resolution: (1080.0, 1080.0).into(),
-                        title: "Pixel Cloud".to_string(),
-                        ..default()
-                    }),
-                    ..default()
-                }),
-            LogDiagnosticsPlugin::default(),
-            FrameTimeDiagnosticsPlugin::default(),
-            CustomMaterialPlugin,
-        ))
-        .add_systems(Startup, setup)
-        .add_systems(Update, (mouse_grab, mouse_input, rotate))
-        .run();
-}
-
 /// A marker component for our shapes so we can query them separately from the ground plane
 #[derive(Component)]
 struct Shape;
@@ -84,12 +62,44 @@ struct MyParent;
 #[derive(Component)]
 struct MyCamera;
 
-fn setup(
+#[derive(Resource)]
+struct ImageName(String);
+
+fn main() {
+    App::new()
+        .add_plugins((
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        resolution: (1080.0, 1080.0).into(),
+                        title: "Pixel Cloud".to_string(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+            LogDiagnosticsPlugin::default(),
+            FrameTimeDiagnosticsPlugin::default(),
+            CustomMaterialPlugin,
+        ))
+        .add_systems(Update, init_cloud)
+        .insert_resource(ImageName("goomba.png".to_string()))
+        // .add_systems(Startup, setup)
+        .add_systems(Update, (mouse_grab, mouse_input, rotate))
+        .run();
+}
+
+
+fn init_cloud(
     mut commands: Commands,
+    img_name: Res<ImageName>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
+    if !img_name.is_changed() {
+        return;
+    }
 
-    let img = ImageReader::open("zelda-box.jpg")
+    let img = ImageReader::open(&img_name.0)
     // let img = ImageReader::open("goomba.png")
         .expect("could not find image")
         .decode()
