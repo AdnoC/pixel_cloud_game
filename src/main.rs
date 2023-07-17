@@ -85,18 +85,33 @@ fn main() {
         .add_systems(Update, init_cloud)
         .insert_resource(ImageName("goomba.png".to_string()))
         // .add_systems(Startup, setup)
-        .add_systems(Update, (mouse_grab, mouse_input, rotate))
+        .add_systems(Update, (load_dd_level, mouse_grab, mouse_input, rotate))
         .run();
 }
 
+fn load_dd_level(mut img_name: ResMut<ImageName>, mut dnd_evr: EventReader<FileDragAndDrop>) {
+    for ev in dnd_evr.iter() {
+       if let FileDragAndDrop::DroppedFile { path_buf, .. } = ev {
+            println!("Dropped file with path: {:?}", path_buf);
+        if let Some(filename) = path_buf.to_str() {
+
+            *img_name = ImageName(filename.to_string());
+        }
+        }
+    }
+}
 
 fn init_cloud(
     mut commands: Commands,
     img_name: Res<ImageName>,
     mut meshes: ResMut<Assets<Mesh>>,
+    preexisting: Query<Entity, Or<(With<MyParent>, With<MyCamera>)>>
 ) {
     if !img_name.is_changed() {
         return;
+    }
+    for entity in preexisting.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 
     let img = ImageReader::open(&img_name.0)
@@ -142,7 +157,7 @@ fn init_cloud(
             InstanceData {
                 position,
                 scale: 1.0,
-                color: [color.red, color.blue, color.green, 1.0],
+                color: [color.red, color.green, color.blue, 1.0],
             }
         })
         .collect();
