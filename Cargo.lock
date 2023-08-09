@@ -2796,11 +2796,13 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
+ "crossbeam-channel",
  "image",
  "palette",
  "rand",
  "rand_distr",
  "rayon",
+ "wasm-bindgen",
 ]
 
 [[package]]

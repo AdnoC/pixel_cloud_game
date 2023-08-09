@@ -1,0 +1,70 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        background: linear-gradient(
+          135deg,
+          white 0%,
+          white 49%,
+          black 49%,
+          black 51%,
+          white 51%,
+          white 100%
+        );
+        background-repeat: repeat;
+        background-size: 20px 20px;
+      }
+      canvas {
+        background-color: white;
+      }
+    </style>
+  </head>
+  <body ondragover="preventEvDefault(event);" ondrop="dropHandler(event);">
+    <script>
+      function preventEvDefault(ev) {
+        ev.preventDefault();
+      }
+
+      function loadImageToGame(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const fileData = reader.result;
+          const bytes = new Uint8Array(fileData);
+          loadImage(bytes);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      function dropHandler(ev) {
+        console.log("File(s) dropped");
+        // Prevent default behavior (Prevent file from being opened)
+        ev.preventDefault();
+        console.log(ev);
+        console.log(ev.dataTransfer.files)
+        loadImageToGame(ev.dataTransfer.files[0]);
+      }
+
+      function newImageSelected() {
+        const input = document.getElementById("file");
+        loadImageToGame(input.files[0]);
+      }
+    </script>
+
+    <div>
+      <h2>To load a new image:</h2>
+      <label>Select an image <input type="file" id="file" name="New Image" accept="image/*" /></label>
+      <p>Or drop an image onto the page</p>
+    <div>
+    <script>
+      const input = document.getElementById("file");
+      input.onchange = newImageSelected;
+    </script>
+
+    <script type="module">
+      import init, { load_image } from './target/wasm_js/cloud_pixel_game.js'
+      window.loadImage = load_image;
+      init()
+    </script>
+  </body>
+</html>

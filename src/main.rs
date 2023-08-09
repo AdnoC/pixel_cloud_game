@@ -3,9 +3,11 @@
 
 use rand::prelude::*;
 use rand_distr::StandardNormal;
+use crossbeam_channel::{bounded, Sender, Receiver};
 use rayon::prelude::*;
 
 use std::{
+    sync::{OnceLock},
     collections::hash_map::Entry,
     f32::consts::{PI, TAU},
 };
@@ -38,8 +40,12 @@ use bevy::{
     },
     window::CursorGrabMode,
 };
-use image::{io::Reader as ImageReader, Rgba, RgbaImage};
+use image::{io::Reader as ImageReader, Rgba, RgbaImage, load_from_memory};
+use std::io::Cursor;
 use palette::{IntoColor, Srgb};
+mod background;
+use background::BackgroundPlugin;
+
 
 #[derive(Default, Resource)]
 struct CurrentImage(RgbaImage);
@@ -63,9 +69,30 @@ struct MyParent;
 struct MyCamera;
 
 #[derive(Resource)]
-struct ImageName(String);
+struct ImageData(RgbaImage);
+
+#[derive(Resource, Deref)]
+struct WasmReceiver(Receiver<Vec<u8>>);
+
+#[cfg(target_family = "wasm")]
+mod wasm {
+    use wasm_bindgen::prelude::*;
+    #[wasm_bindgen]
+    pub fn load_image(img: &[u8]) {
+        match crate::IMG_QUEUE.get() {
+            Some(tx) => tx.send(img.to_vec()).expect("error sending wasm img data"),
+            None => return,
+        }
+    }
+}
+
+static IMG_QUEUE: OnceLock<Sender<Vec<u8>>> = OnceLock::new();
 
 fn main() {
+    let img = load_from_memory(include_bytes!("../goomba.png"))
+        .expect("could not find image")
+        .to_rgba8();
+
     App::new()
         .add_plugins((
             DefaultPlugins
@@ -82,44 +109,63 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             CustomMaterialPlugin,
         ))
+        .add_systems(Startup, setup)
+        // .add_plugins(BackgroundPlugin)
         .add_systems(Update, init_cloud)
-        .insert_resource(ImageName("goomba.png".to_string()))
+        .insert_resource(ImageData(img))
         // .add_systems(Startup, setup)
-        .add_systems(Update, (load_dd_level, mouse_grab, mouse_input, rotate))
+        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate))
         .run();
 }
 
-fn load_dd_level(mut img_name: ResMut<ImageName>, mut dnd_evr: EventReader<FileDragAndDrop>) {
-    for ev in dnd_evr.iter() {
-       if let FileDragAndDrop::DroppedFile { path_buf, .. } = ev {
-            println!("Dropped file with path: {:?}", path_buf);
-        if let Some(filename) = path_buf.to_str() {
 
-            *img_name = ImageName(filename.to_string());
-        }
+fn setup(mut commands: Commands) {
+    let (tx, rx) = bounded::<Vec<u8>>(10);
+    commands.insert_resource(WasmReceiver(rx));
+    IMG_QUEUE.set(tx).expect("could not initialize wasm image queue");
+}
+
+fn load_external_level(mut img_data: ResMut<ImageData>, receiver: Res<WasmReceiver>) {
+    for from_external in receiver.try_iter() {
+        let img = load_from_memory(&from_external)
+            .expect("could not find image")
+            .to_rgba8();
+        *img_data = ImageData(img);
+    }
+}
+
+fn load_dd_level(mut img_data: ResMut<ImageData>, mut dnd_evr: EventReader<FileDragAndDrop>) {
+    for ev in dnd_evr.iter() {
+        if let FileDragAndDrop::DroppedFile { path_buf, .. } = ev {
+            println!("Dropped file with path: {:?}", path_buf);
+            if let Some(filename) = path_buf.to_str() {
+
+                let img = ImageReader::open(filename)
+                    .expect("could not find image")
+                    .decode()
+                    .expect("could not decode image")
+                    .to_rgba8();
+                *img_data = ImageData(img);
+            }
         }
     }
 }
 
 fn init_cloud(
     mut commands: Commands,
-    img_name: Res<ImageName>,
+    img_data: Res<ImageData>,
     mut meshes: ResMut<Assets<Mesh>>,
     preexisting: Query<Entity, Or<(With<MyParent>, With<MyCamera>)>>
 ) {
-    if !img_name.is_changed() {
+    if !img_data.is_changed() {
         return;
     }
     for entity in preexisting.iter() {
         commands.entity(entity).despawn_recursive();
     }
 
-    let img = ImageReader::open(&img_name.0)
-    // let img = ImageReader::open("goomba.png")
-        .expect("could not find image")
-        .decode()
-        .expect("could not decode image")
-        .to_rgba8();
+    let img = &img_data.0;
+
     let height = img.height();
     let width = img.width();
     const RADIUS: f32 = 0.55;
