@@ -20,10 +20,13 @@ const zoom = 0.800;
 const tile = 0.850;
 const speed = 0.003;
 
-const brightness = 0.0015;
+//const brightness = 0.0015;
+const brightness = 0.0180;
 const darkmatter = 0.600;
-const distfading = 0.730;
-const saturation = 0.850;
+//const distfading = 0.730;
+const distfading = 0.500;
+//const saturation = 0.850;
+const saturation = 0.900;
 
 @fragment
 fn fragment(
@@ -61,6 +64,6 @@ fn fragment(
         s = s + stepsize;
     }
     v = mix(vec3<f32>(length(v)), v, saturation); // color_adjust
-    // return vec4<f32>(v * 0.0006, 1.0);
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    return vec4<f32>(v * 0.0006, 1.0);
+  //  return vec4<f32>(1.0, 0.3, 0.3, 1.0);
 }

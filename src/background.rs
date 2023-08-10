@@ -1,5 +1,7 @@
+
 // The meat of this taken from https://github.com/BorisBoutillier/Kataster
 use bevy::{prelude::*, render::render_resource::AsBindGroup, reflect::{TypeUuid, TypePath}};
+
 
 pub struct BackgroundPlugin;
 impl Plugin for BackgroundPlugin {
@@ -20,8 +22,9 @@ fn spawn_background(
     commands.spawn(MaterialMeshBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
         transform: Transform {
-            translation: Vec3::new(0.0, 0.0, 0.0),
+            translation: Vec3::new(0.0, 0.0, 100.0),
             scale: Vec3::new(WIDTH, HEIGHT, 1.0),
+            rotation: Quat::from_array([1.0, 0.0, 0.0, 0.0]),
             ..default()
         },
         material: materials.add(BackgroundMaterial { time: 0.0 }),
