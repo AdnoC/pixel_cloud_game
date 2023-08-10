@@ -1,6 +1,8 @@
 //! This example demonstrates the built-in 3d shapes in Bevy.
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
+// A bunch of wgsl typedefs:
+// https://github.com/bevyengine/bevy/issues/5561
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 use crossbeam_channel::{bounded, Sender, Receiver};

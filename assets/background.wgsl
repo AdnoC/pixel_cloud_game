@@ -1,5 +1,5 @@
-// This shader is inspired by Star Nest by Pablo Roman Andrioli:
-// https://www.shadertoy.com/view/XlfGRj
+// This shader is inspired by 70s Melt by tomorrowevening
+// https://www.shadertoy.com/view/XsX3zl
 
 #import bevy_sprite::mesh2d_vertex_output MeshVertexOutput
 
@@ -10,60 +10,55 @@ struct BackgroundMaterial {
 @group(1) @binding(0)
 var<uniform> background: BackgroundMaterial;
 
-const iterations = 17;
-const formuparam = 0.53;
 
-const volsteps = 20;
-const stepsize = 0.1;
 
-const zoom = 0.800;
-const tile = 0.850;
-const speed = 0.003;
+const zoom: i32 = 40;
+const brightness: f32 = 0.975;
+var<private> fScale: f32 = 1.25;
 
-//const brightness = 0.0015;
-const brightness = 0.0180;
-const darkmatter = 0.600;
-//const distfading = 0.730;
-const distfading = 0.500;
-//const saturation = 0.850;
-const saturation = 0.900;
+fn cosRange(degrees: f32, range: f32, minimum: f32) -> f32 {
+// RADIANS 0.017453292519943295
+        return (((1.0 + cos(degrees * 0.017453292519943295)) * 0.5) * range) + minimum;
+}
+
 
 @fragment
 fn fragment(
     in: MeshVertexOutput
 ) -> @location(0) vec4<f32> {
-    let dir = vec3<f32>(in.uv * zoom, 1.0);
-    let time = background.time * speed + 0.25;
-    var from_ = vec3<f32>(1.0, 0.5, 0.5);
-    from_ = from_ + vec3<f32>(time * 2., time, -2.);
+//void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
+//let dir = vec3<f32>(in.uv * zoom, 1.0);
+        let fragCoord = in.world_position.xy;
+        let iResolution = vec2<f32>(100.0, 100.0);
 
-    // volumetric rendering
-    var s = 0.1;
-    var fade = 1.0;
-    var v = vec3<f32>(0.);
-    for (var r = 0; r < volsteps; r = r + 1) {
-        var p = from_ + s * dir * 0.5;
-        p = abs(vec3<f32>(tile) - (p % vec3<f32>(tile * 2.0)));
+        let time = background.time * 1.25;
+        //let time = iTime * 1.25;
+        // vec2 uv = fragCoord.xy / iResolution.xy;
+        var p  = (2.0*fragCoord.xy-iResolution.xy)/max(iResolution.x,iResolution.y);
+        let ct = cosRange(time*5.0, 3.0, 1.1);
+        let xBoost = cosRange(time*0.2, 5.0, 5.0);
+        let yBoost = cosRange(time*0.1, 10.0, 5.0);
 
-        var pa = 0.0;
-        var a = 0.0;
-        for (var i = 0; i < iterations; i = i + 1) {
-            p = abs(p) / dot(p, p) - formuparam; // the magic formula
-            a = a + abs(length(p) - pa); // absolute sum of average change
-            pa = length(p);
+        fScale = cosRange(time * 15.5, 1.25, 0.5);
+
+        for(var i=1;i<zoom;i = i +1) {
+                let _i = f32(i);
+                var newp=p;
+                newp.x+=0.25/_i*sin(_i*p.y+time*cos(ct)*0.5/20.0+0.005*_i)*fScale+xBoost;
+                newp.y+=0.25/_i*sin(_i*p.x+time*ct*0.3/40.0+0.03*f32(i+15))*fScale+yBoost;
+                p=newp;
         }
 
-        let dm = max(0.0, darkmatter - a * a * 0.001); // dark matter
-        a = a * a * a; // add contrast
-        if r > 6 {
-            fade = fade * (1. - dm); // dark matter, don't render near
-        }
-        v = v + fade;
-        v = v + vec3<f32>(s, s * s, s * s * s * s) * a * brightness * fade; // coloring based on distance
-        fade = fade * distfading; // distance fading;
-        s = s + stepsize;
-    }
-    v = mix(vec3<f32>(length(v)), v, saturation); // color_adjust
-    return vec4<f32>(v * 0.0006, 1.0);
-  //  return vec4<f32>(1.0, 0.3, 0.3, 1.0);
+        var col=vec3(0.5*sin(3.0*p.x)+0.5,0.5*sin(3.0*p.y)+0.5,sin(p.x+p.y));
+        col *= brightness;
+
+    // Add border
+    let vigAmt = 5.0;
+    let vignette = (1.0 - vigAmt*(in.uv.y - 0.5)*(in.uv.y - 0.5))*(1.0 - vigAmt*(in.uv.x - 0.5)*(in.uv.x - 0.5));
+    var extrusion = (col.x + col.y + col.z) / 4.0;
+    extrusion *= 1.5;
+    extrusion *= vignette;
+
+        // fragColor = vec4(col, extrusion);
+    return vec4(col, extrusion);
 }
