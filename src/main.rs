@@ -93,8 +93,8 @@ fn main() {
         .expect("could not find image")
         .to_rgba8();
 
-    App::new()
-        .add_plugins((
+    let mut app = App::new();
+        app.add_plugins((
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
                 .set(WindowPlugin {
@@ -110,12 +110,16 @@ fn main() {
             CustomMaterialPlugin,
         ))
         .add_systems(Startup, setup)
-        // .add_plugins(BackgroundPlugin)
         .add_systems(Update, init_cloud)
         .insert_resource(ImageData(img))
         // .add_systems(Startup, setup)
-        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate))
-        .run();
+        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate));
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            app.add_plugins(BackgroundPlugin);
+        }
+        app.run();
 }
 
 

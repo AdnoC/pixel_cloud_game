@@ -20,7 +20,7 @@
       }
     </style>
   </head>
-  <body ondragover="preventEvDefault(event);" ondrop="dropHandler(event);">
+  <body ondragover="preventEvDefault(event);" ondrop="handleDrop(event);">
     <script>
       function preventEvDefault(ev) {
         ev.preventDefault();
@@ -36,7 +36,19 @@
         reader.readAsArrayBuffer(file);
       }
 
-      function dropHandler(ev) {
+      async function imageToUint8Array(image, context) {
+        function toBlob(canvas, type = "image/png", quality = 1) {
+          return new Promise((resolve) => canvas.toBlob(blob => resolve(blob)))
+        }
+
+        context.width = image.width;
+        context.height = image.height;
+        context.drawImage(image, 0, 0);
+        const blob = await toBlob(context.canvas, "image/png");
+        return new Uint8Array(await blob.arrayBuffer());
+      }
+
+      function handleDrop(ev) {
         console.log("File(s) dropped");
         // Prevent default behavior (Prevent file from being opened)
         ev.preventDefault();
@@ -44,6 +56,36 @@
         console.log(ev.dataTransfer.files)
         loadImageToGame(ev.dataTransfer.files[0]);
       }
+
+//                              https://img.pokemondb.net/sprites/sword-shield/normal/decidueye.png
+      async function handleKeyDown(ev) {
+        console.log('key down')
+        console.log(ev.key)
+        if (ev.key === "Enter") {
+          const urlElem = document.getElementById("url");
+          const req = new Request(urlElem.value);
+          const res = await fetch(req, {
+            mode: 'cors'
+          });
+          console.log(res)
+          const blob = await res.blob();
+          console.log(blob)
+          loadImage(blob.arrayBuffer());
+          /*
+            const imgTag = document.createElement("img");
+          imgTag.crossOrigin="anonymous";
+          imgTag.onload = async () => {
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            const imgData = await imageToUint8Array(imgTag, context);
+            loadImage(imgData);
+          };
+          imgTag.src = urlElem.value;
+          */
+        }
+      }
+      console.log('setting kd cb')
+      window.handleKeyDown = handleKeyDown
 
       function newImageSelected() {
         const input = document.getElementById("file");
@@ -53,7 +95,12 @@
 
     <div>
       <h2>To load a new image:</h2>
-      <label>Select an image <input type="file" id="file" name="New Image" accept="image/*" /></label>
+      <p>
+        <label>Select an image on your computer: <input type="file" id="file" name="New Image" accept="image/*" /></label>
+      </p>
+      <p>
+      <label>Link to an image online (doesn't work atm): <input type="text" id="url" placeholder="https://example.com/image.png" onkeydown="handleKeyDown(event)" /></label>
+      </p>
       <p>Or drop an image onto the page</p>
     <div>
     <script>
@@ -62,9 +109,23 @@
     </script>
 
     <script type="module">
-      import init, { load_image } from './target/wasm_js/cloud_pixel_game.js'
+      import init, { load_image } from "./target/wasm_js/cloud_pixel_game.js"
       window.loadImage = load_image;
-      init()
+      async function keepAlive() {
+        while (true) {
+        try {
+          await init()
+        } catch(e) {
+          // Just restart the game if an out-of-memory error occurred
+          if (!e.stack.includes("_rg_oom")) {
+            throw new Error("An error occurred", { cause: e });
+          } else {
+            console.log("Out-of-memory error ocurred. Restarting game.");
+          }
+        }
+        }
+      }
+      keepAlive();
     </script>
   </body>
 </html>
