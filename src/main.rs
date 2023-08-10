@@ -161,6 +161,7 @@ fn init_cloud(
     mut commands: Commands,
     img_data: Res<ImageData>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut bg_size: ResMut<background::BackgroundSize>,
     preexisting: Query<Entity, Or<(With<MyParent>, With<MyCamera>)>>
 ) {
     if !img_data.is_changed() {
@@ -266,6 +267,8 @@ fn init_cloud(
         },
         MyCamera,
     ));
+
+    *bg_size = background::BackgroundSize(width as f32 * 2., height as f32 * 2.);
 }
 
 fn rotate(mut query: Query<&mut Transform, With<MyCamera>>, time: Res<Time>) {

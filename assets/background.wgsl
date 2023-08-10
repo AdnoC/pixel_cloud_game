@@ -5,6 +5,8 @@
 
 struct BackgroundMaterial {
     time: f32,
+    width: f32,
+    height: f32,
 };
 
 @group(1) @binding(0)
@@ -29,7 +31,7 @@ fn fragment(
 //void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
 //let dir = vec3<f32>(in.uv * zoom, 1.0);
         let fragCoord = in.world_position.xy;
-        let iResolution = vec2<f32>(100.0, 100.0);
+        let iResolution = vec2<f32>(background.width, background.height);
 
         let time = background.time * 1.25;
         //let time = iTime * 1.25;
