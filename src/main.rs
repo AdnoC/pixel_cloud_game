@@ -178,7 +178,28 @@ fn init_cloud(
     const RADIUS: f32 = 0.55;
     let max_distance = u32::max(height, width) as f32;
 
-    let parent = commands.spawn((MyParent, SpatialBundle::default())).id();
+    let parent_bundle = {
+        let mut parent_bundle = SpatialBundle::default();
+
+        // https://stackoverflow.com/a/44031492
+        let mut rng = rand::thread_rng();
+        let u: f32 = rng.gen_range((0.0)..=(1.0));
+        let v: f32 = rng.gen_range((0.0)..=(1.0));
+        let w: f32 = rng.gen_range((0.0)..=(1.0));
+
+        let quat = Quat::from_xyzw(
+             (1. - u).sqrt() * (TAU * v).sin(),
+             (1. - u).sqrt() * (TAU * v).cos(),
+             (u).sqrt() * (TAU * w).sin(),
+             (u).sqrt() * (TAU * w).cos(),
+        );
+
+
+        parent_bundle.transform.rotation = quat;
+
+        parent_bundle
+    };
+    let parent = commands.spawn((MyParent, parent_bundle)).id();
     let sphere_mesh = meshes.add(Mesh::from(shape::UVSphere {
         radius: RADIUS,
         ..default()
