@@ -7,6 +7,7 @@ struct BackgroundMaterial {
     time: f32,
     width: f32,
     height: f32,
+    brightness: f32,
 };
 
 @group(1) @binding(0)
@@ -15,7 +16,7 @@ var<uniform> background: BackgroundMaterial;
 
 
 const zoom: i32 = 40;
-const brightness: f32 = 0.975;
+//const brightness: f32 = 0.975;
 var<private> fScale: f32 = 1.25;
 
 fn cosRange(degrees: f32, range: f32, minimum: f32) -> f32 {
@@ -52,7 +53,7 @@ fn fragment(
         }
 
         var col=vec3(0.5*sin(3.0*p.x)+0.5,0.5*sin(3.0*p.y)+0.5,sin(p.x+p.y));
-        col *= brightness;
+        col *= background.brightness;
 
     // Add border
     let vigAmt = 5.0;

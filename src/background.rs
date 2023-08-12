@@ -4,6 +4,8 @@ use bevy::{prelude::*, render::render_resource::AsBindGroup, reflect::{TypeUuid,
 
 #[derive(Resource)]
 pub struct BackgroundSize(pub f32, pub f32);
+#[derive(Resource)]
+pub struct BackgroundBrightness(pub Option<f32>);
 
 #[derive(Component)]
 pub struct BackgroundTag;
@@ -14,11 +16,13 @@ impl Plugin for BackgroundPlugin {
         app.add_plugins(MaterialPlugin::<BackgroundMaterial>::default())
             .add_systems(Startup, spawn_background)
             .add_systems(Update, (update_background_time, update_bg_size))
-        .insert_resource(BackgroundSize(100., 100.));
+        .insert_resource(BackgroundSize(100., 100.))
+        .insert_resource(BackgroundBrightness(None));
     }
 }
 const WIDTH: f32 = 100.0;
 const HEIGHT: f32 = 100.0;
+const DEFAULT_BRIGHTNESS: f32 = 0.975;
 // Spawn a simple stretched quad that will use of backgound shader
 fn spawn_background(
     mut commands: Commands,
@@ -33,7 +37,7 @@ fn spawn_background(
             rotation: Quat::from_array([1.0, 0.0, 0.0, 0.0]),
             ..default()
         },
-        material: materials.add(BackgroundMaterial { time: 0.0, width: 100.0, height: 100.0 }),
+        material: materials.add(BackgroundMaterial { time: 0.0, width: 100.0, height: 100.0, brightness: DEFAULT_BRIGHTNESS }),
         ..default()
     }, BackgroundTag));
 }
@@ -56,6 +60,8 @@ struct BackgroundMaterial {
     width: f32,
     #[uniform(0)]
     height: f32,
+    #[uniform(0)]
+    brightness: f32,
 }
 
 impl Material for BackgroundMaterial {
@@ -66,6 +72,7 @@ impl Material for BackgroundMaterial {
 fn update_background_time(
     time: Res<Time>,
     bg_size: Res<BackgroundSize>,
+    bg_brightness: Res<BackgroundBrightness>,
     // state: Res<State<AppState>>,
     mut backgrounds: ResMut<Assets<BackgroundMaterial>>,
 ) {
@@ -74,6 +81,7 @@ fn update_background_time(
             background.time += time.delta_seconds();
             background.width = bg_size.0;
             background.height = bg_size.1;
+            background.brightness = bg_brightness.0.unwrap_or(DEFAULT_BRIGHTNESS);
         }
     // }
 }

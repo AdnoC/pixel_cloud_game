@@ -76,6 +76,9 @@ struct ImageData(RgbaImage);
 #[derive(Resource, Deref)]
 struct WasmReceiver(Receiver<Vec<u8>>);
 
+#[derive(Resource)]
+struct WinTimer(f64);
+
 #[cfg(target_family = "wasm")]
 mod wasm {
     use wasm_bindgen::prelude::*;
@@ -114,10 +117,11 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, init_cloud)
         .insert_resource(ImageData(img))
+        .insert_resource(WinTimer(0.0))
         // .add_systems(Startup, setup)
-        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate));
+        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate, win_check));
 
-        #[cfg(not(target_family = "wasm"))]
+        //#[cfg(not(target_family = "wasm"))]
         {
             app.add_plugins(BackgroundPlugin);
         }
@@ -162,6 +166,7 @@ fn init_cloud(
     img_data: Res<ImageData>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut bg_size: ResMut<background::BackgroundSize>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     preexisting: Query<Entity, Or<(With<MyParent>, With<MyCamera>)>>
 ) {
     if !img_data.is_changed() {
@@ -195,7 +200,7 @@ fn init_cloud(
         );
 
 
-        parent_bundle.transform.rotation = quat;
+        //parent_bundle.transform.rotation = quat;
 
         parent_bundle
     };
@@ -270,6 +275,131 @@ fn init_cloud(
 
     commands.entity(parent).push_children(&[spheres_id]);
 
+    {
+        let red = materials.add(StandardMaterial {
+            base_color: Color::Rgba {
+                red: 1.,
+                blue: 0.,
+                green: 0.,
+                alpha: 1.,
+            },
+            ..default()
+        });
+        let green = materials.add(StandardMaterial {
+            base_color: Color::Rgba {
+                red: 0.,
+                blue: 0.,
+                green: 1.,
+                alpha: 1.,
+            },
+            ..default()
+        });
+        let blue = materials.add(StandardMaterial {
+            base_color: Color::Rgba {
+                red: 0.,
+                blue: 1.,
+                green: 0.,
+                alpha: 1.,
+            },
+            ..default()
+        });
+
+
+        // commands.spawn((
+        //     PbrBundle {
+        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+        //             radius: 5.,
+        //             height: 100.,
+        //             resolution: 16,
+        //             segments: 2,
+        //
+        //         })),
+        //         material: red,
+        //         transform: Transform::default().looking_at(
+        //             Vec3::new(1., 0., 0.,),
+        //             Vec3::ZERO
+        //         ),
+        //         ..default()
+        //     },
+        //     Shape,
+        // ));
+        // commands.spawn((
+        //     PbrBundle {
+        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+        //             radius: 5.,
+        //             height: 100.,
+        //             resolution: 16,
+        //             segments: 2,
+        //
+        //         })),
+        //         material: green,
+        //         transform: Transform::default().looking_at(
+        //             Vec3::new(0., 1., 0.,),
+        //             Vec3::ZERO
+        //         ),
+        //         ..default()
+        //     },
+        //     Shape,
+        // ));
+        // commands.spawn((
+        //     PbrBundle {
+        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+        //             radius: 5.,
+        //             height: 100.,
+        //             resolution: 16,
+        //             segments: 2,
+        //
+        //         })),
+        //         material: blue,
+        //         transform: Transform::default().looking_at(
+        //             Vec3::new(1., 0., 0.,),
+        //             Vec3::ZERO
+        //         ),
+        //         ..default()
+        //     },
+        //     Shape,
+        // ));
+
+        let r = commands.spawn((
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+                                  Vec3::new(-1., -1., 0.,),
+                                  Vec3::new(1., 1., 100.,),
+                      ))),
+                material: red,
+                transform: Transform::from_xyz(0., 0., 0.,),
+                ..default()
+            },
+            Shape,
+        )).id();
+        let g = commands.spawn((
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+                                  Vec3::new(-1., 0., -1.,),
+                                  Vec3::new(1., 100., 1.,),
+                      ))),
+                material: green,
+                transform: Transform::from_xyz(0., 0., 0.,),
+                ..default()
+            },
+            Shape,
+        )).id();
+        let b = commands.spawn((
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+                                  Vec3::new(0., -1., -1.,),
+                                  Vec3::new(100., 1., 1.,),
+                      ))),
+                material: blue,
+                transform: Transform::from_xyz(0., 0., 0.,),
+                ..default()
+            },
+            Shape,
+        )).id();
+
+    commands.entity(parent).push_children(&[r, g, b]);
+    }
+
     // commands.insert_resource(CurrentImage(img));
 
     commands.spawn((
@@ -290,6 +420,32 @@ fn init_cloud(
     ));
 
     *bg_size = background::BackgroundSize(width as f32 * 2., height as f32 * 2.);
+}
+
+fn win_check(parent_transform: Query<&Transform, With<MyParent>>, mut bg_brightness: ResMut<background::BackgroundBrightness>, mut win_timer: ResMut<WinTimer>, time: Res<Time>) {
+    for transform in &parent_transform {
+        // let (x, y, z) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
+        let (rot_vec, _f) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
+        let rot_vec = rot_vec.normalize();
+        // println!("x,y,z = {:?}", rot_vec);
+        let mut dist = rot_vec.z;
+        if dist > 0.5 {
+            dist -= 1.;
+        }
+        dist = dist.abs();
+        if dist.abs() < 0.001 {
+                println!("Angle correct. Hold to win");
+            bg_brightness.0 = bg_brightness.0.map(|b| b - 0.5);
+            win_timer.0 += time.delta_seconds_f64();
+            if win_timer.0 > 5. {
+                println!("You Win!!");
+            }
+        } else if win_timer.0 > 0. {
+            bg_brightness.0 = None;
+            win_timer.0 = 0.;
+        }
+
+    }
 }
 
 fn rotate(mut query: Query<&mut Transform, With<MyCamera>>, time: Res<Time>) {
