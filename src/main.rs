@@ -42,7 +42,7 @@ use bevy::{
     },
     window::CursorGrabMode,
 };
-use image::{io::Reader as ImageReader, Rgba, RgbaImage, load_from_memory};
+use image::{io::Reader as ImageReader, Rgba, RgbaImage, load_from_memory, SubImage};
 use std::io::Cursor;
 use palette::{IntoColor, Srgb};
 mod background;
@@ -72,6 +72,35 @@ struct MyCamera;
 
 #[derive(Resource)]
 struct ImageData(RgbaImage);
+impl ImageData {
+    fn new(img: RgbaImage) -> ImageData {
+        let mut min_x = img.width();
+        let mut min_y = img.height();
+        let mut max_x = 0;
+        let mut max_y = 0;
+        for (px, py, pixel) in img.enumerate_pixels() {
+            if pixel[3] == u8::MAX {
+                if px < min_x {
+                    min_x = px;
+                }
+                if px > max_x {
+                    max_x = px;
+                }
+                if py < min_y {
+                    min_y = py;
+                }
+                if py > max_y {
+                    max_y = py;
+                }
+            }
+        }
+
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        let mut img = img;
+        ImageData(image::imageops::crop(&mut img, min_x, min_y, width, height).to_image())
+    }
+}
 
 #[derive(Resource, Deref)]
 struct WasmReceiver(Receiver<Vec<u8>>);
@@ -140,7 +169,7 @@ fn load_external_level(mut img_data: ResMut<ImageData>, receiver: Res<WasmReceiv
         let img = load_from_memory(&from_external)
             .expect("could not find image")
             .to_rgba8();
-        *img_data = ImageData(img);
+        *img_data = ImageData::new(img);
     }
 }
 
@@ -155,7 +184,7 @@ fn load_dd_level(mut img_data: ResMut<ImageData>, mut dnd_evr: EventReader<FileD
                     .decode()
                     .expect("could not decode image")
                     .to_rgba8();
-                *img_data = ImageData(img);
+                *img_data = ImageData::new(img);
             }
         }
     }
