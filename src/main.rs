@@ -74,6 +74,10 @@ struct MyCamera;
 struct ImageData(RgbaImage);
 impl ImageData {
     fn new(img: RgbaImage) -> ImageData {
+        ImageData(Self::crop_transparency(img))
+    }
+
+    fn crop_transparency(img: RgbaImage) -> RgbaImage {
         let mut min_x = img.width();
         let mut min_y = img.height();
         let mut max_x = 0;
@@ -98,7 +102,7 @@ impl ImageData {
         let width = max_x - min_x;
         let height = max_y - min_y;
         let mut img = img;
-        ImageData(image::imageops::crop(&mut img, min_x, min_y, width, height).to_image())
+        image::imageops::crop(&mut img, min_x, min_y, width, height).to_image()
     }
 }
 
