@@ -114,7 +114,7 @@ impl ImageData {
 #[derive(Resource, Default)]
 struct UiState {
     is_open: bool,
-    img_handles: Option<[egui::TextureHandle; 5]>,
+    img_handles: Option<[egui::TextureHandle; 6]>,
 }
 
 #[derive(Resource, Deref)]
@@ -268,6 +268,7 @@ akj
         for py in start_y..(start_y + scale) {
             let start = (py * width + src_x * scale) as usize;
             let end = start + scale as usize - 1;
+            // println!("px.len = {}, ({}, {}) * ({:?}) => ({}..={}) {:?} = {:?}", pixels.len(), src_x, src_y, (src.width(), src.height()), start, end, (width, height), pixel);
             let _ = &pixels[start..=end].fill(*pixel);
         }
     }
@@ -278,7 +279,7 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
     let mut ctx = contexts.ctx_mut();
     if img_data.is_changed() {
         let img = &img_data.0;
-        let handles = [1, 2, 4, 8, 16/*, 32*/]
+        let handles = [1, 2, 4, 8, 16, 32]
             .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
             .map(|img| ctx.load_texture(
                             "current-image",
@@ -305,7 +306,9 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
             let dy = size_avail[1] as usize / img_size[1] as usize;
             let scale = dx.min(dy);
             let handle_idx = {
-                if scale >= 16 {
+                if scale >= 32 {
+                    5
+                } else if scale >= 16 {
                     4
                 } else if scale >= 8 {
                     3
@@ -317,10 +320,8 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
                     0
                 }
             };
-            let handle_idx = 0;
             let img_handle = &img_handles[handle_idx];
             let img_size = img_handle.size_vec2();
-            let img_size = img_size * std::cmp::min(dx, dy) as f32;
             let img = ui.add(egui::widgets::Image::new(
                     img_handle.id(),
                     img_size,
