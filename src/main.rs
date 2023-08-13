@@ -165,6 +165,8 @@ fn main() {
                     primary_window: Some(Window {
                         resolution: (1080.0, 1080.0).into(),
                         title: "Pixel Cloud".to_string(),
+                        // Anchors WASM version to a canvas with id "bevy"
+                        canvas: Some("#bevy".to_string()),
                         ..default()
                     }),
                     ..default()
