@@ -31,7 +31,7 @@
         reader.onload = () => {
           const fileData = reader.result;
           const bytes = new Uint8Array(fileData);
-          loadImage(bytes);
+          loadImage(bytes, file.name);
         };
         reader.readAsArrayBuffer(file);
       }
@@ -53,7 +53,8 @@
         // Prevent default behavior (Prevent file from being opened)
         ev.preventDefault();
         console.log(ev);
-        console.log(ev.dataTransfer.files)
+        console.log(ev.dataTransfer.files[0])
+        console.log(JSON.stringify(ev.dataTransfer.files[0], null, 2))
         loadImageToGame(ev.dataTransfer.files[0]);
       }
 
@@ -87,7 +88,7 @@
             canvas.height = imgTag.height;
             const context = canvas.getContext("2d");
             const imgData = await imageToUint8Array(imgTag, context);
-            loadImage(imgData);
+            loadImage(imgData, url);
           };
           imgTag.src = url;
         }

@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use std::{
     sync::{OnceLock},
     collections::hash_map::Entry,
-    f32::consts::{PI, TAU},
+    f32::consts::{PI, TAU}, path::Path,
 };
 
 use bevy::{
@@ -74,11 +74,18 @@ struct MyCamera;
 #[derive(Event)]
 struct FixTransparencyEvent(pub u32, pub u32);
 
+#[derive(Event)]
+struct WinStateEvent(pub bool);
+
 #[derive(Resource)]
-struct ImageData(RgbaImage);
+struct ImageData(RgbaImage, Option<String>);
 impl ImageData {
-    fn new(img: RgbaImage) -> ImageData {
-        ImageData(Self::crop_transparency(img))
+    fn new(img: RgbaImage, name: String) -> ImageData {
+        ImageData(Self::crop_transparency(img), Some(name))
+    }
+
+    fn new_unnamed(img: RgbaImage) -> ImageData {
+        ImageData(Self::crop_transparency(img), None)
     }
 
     fn crop_transparency(img: RgbaImage) -> RgbaImage {
@@ -110,17 +117,22 @@ impl ImageData {
     }
 }
 
+#[derive(Resource, Default, Eq, PartialEq)]
+enum AppState {
+    #[default]
+    InGame,
+    TransparencyFixer,
+}
 
 #[derive(Resource, Default)]
-struct UiState {
-    is_open: bool,
+struct UiData {
     loaded: bool,
     img_handles: Option<[egui::TextureHandle; 6]>,
     img_handle: Option<egui::TextureHandle>,
 }
 
 #[derive(Resource, Deref)]
-struct WasmReceiver(Receiver<Vec<u8>>);
+struct WasmReceiver(Receiver<(Vec<u8>, String)>);
 
 #[derive(Resource)]
 struct WinTimer(f64);
@@ -129,15 +141,15 @@ struct WinTimer(f64);
 mod wasm {
     use wasm_bindgen::prelude::*;
     #[wasm_bindgen]
-    pub fn load_image(img: &[u8]) {
+    pub fn load_image(img: &[u8], name: String) {
         match crate::IMG_QUEUE.get() {
-            Some(tx) => tx.send(img.to_vec()).expect("error sending wasm img data"),
+            Some(tx) => tx.send((img.to_vec(), name)).expect("error sending wasm img data"),
             None => return,
         }
     }
 }
 
-static IMG_QUEUE: OnceLock<Sender<Vec<u8>>> = OnceLock::new();
+static IMG_QUEUE: OnceLock<Sender<(Vec<u8>, String)>> = OnceLock::new();
 
 
 fn main() {
@@ -157,7 +169,7 @@ fn main() {
                     }),
                     ..default()
                 }),
-            // LogDiagnosticsPlugin::default(),
+            LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
             CustomMaterialPlugin,
         ))
@@ -165,11 +177,12 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, init_cloud)
         .add_event::<FixTransparencyEvent>()
-        .insert_resource(ImageData(img))
+        .insert_resource(ImageData(img, Some("goomba.png".to_string())))
         .insert_resource(WinTimer(0.0))
-        .insert_resource(UiState::default())
+        .insert_resource(AppState::default())
+        .insert_resource(UiData::default())
         // .add_systems(Startup, setup)
-        .add_systems(Update, (ui_system, ui_open))
+        .add_systems(Update, (transparency_fixer_ui, ui_open))
         .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate, win_check, apply_transparency_fix));
 
         //#[cfg(not(target_family = "wasm"))]
@@ -179,8 +192,11 @@ fn main() {
         app.run();
 }
 
+// fn run_if_ui_closed(ui_state: Res<UiState>)
+
+
 fn setup(mut commands: Commands) {
-    let (tx, rx) = bounded::<Vec<u8>>(10);
+    let (tx, rx) = bounded::<(Vec<u8>, String)>(10);
     commands.insert_resource(WasmReceiver(rx));
     IMG_QUEUE.set(tx).expect("could not initialize wasm image queue");
 }
@@ -275,13 +291,13 @@ fn scale_image(src: &RgbaImage, scale: u32) -> RgbaImage {
     RgbaImage::from_vec(width, height, pixels.iter().flat_map(|p| p.0).collect()).expect("resized image not valid")
 }
 
-fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix_transparency: EventWriter<FixTransparencyEvent>, mut contexts: EguiContexts) {
+fn transparency_fixer_ui(ui_state: Res<AppState>, mut ui_data: ResMut<UiData>, img_data: Res<ImageData>, mut ev_fix_transparency: EventWriter<FixTransparencyEvent>, mut contexts: EguiContexts) {
     let ctx = contexts.ctx_mut();
     if img_data.is_changed() {
-        ui_state.loaded = false;
+        ui_data.loaded = false;
     }
 
-    if !ui_state.is_open {
+    if *ui_state != AppState::TransparencyFixer {
         return;
     }
 
@@ -299,8 +315,8 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
         let scale_h = target_h / img_data.0.height();
         scale_w.min(scale_h)
     };
-    if !ui_state.loaded {
-        ui_state.loaded = true;
+    if !ui_data.loaded {
+        ui_data.loaded = true;
 
         // let img = &img_data.0;
         // let handles = [1, 2, 4, 8, 16, 32]
@@ -310,7 +326,7 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
         //                     img,
         //                     Default::default(),
         //                ));
-        // ui_state.img_handles = Some(handles);
+        // ui_data.img_handles = Some(handles);
 
 
         let img = if scale > 1 {
@@ -324,14 +340,14 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
             img,
             Default::default(),
             );
-        ui_state.img_handle = Some(img_handle);
+        ui_data.img_handle = Some(img_handle);
     }
 
     egui::CentralPanel::default().show(ctx, |ui| {
         // TODO: Handle too-big images via scroll.
         // They don't work performance-wise but I want to do this.
         egui::ScrollArea::neither().show(ui, |ui| {
-            if let Some(img_handle) = &ui_state.img_handle {
+            if let Some(img_handle) = &ui_data.img_handle {
                 // let base_img = &img_handles[0];
                 // let size_avail = ui.available_size();
                 // let img_size = base_img.size_vec2();
@@ -372,7 +388,7 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
     });
 
     // egui::CentralPanel::default().show(ctx, |ui| {
-    //     if let Some(img_handle) = &ui_state.img_handle {
+    //     if let Some(img_handle) = &ui_data.img_handle {
     //         // let base_img = &img_handles[0];
     //         // let size_avail = ui.available_size();
     //         // let img_size = base_img.size_vec2();
@@ -414,24 +430,29 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
     // });
 }
 
-fn ui_open(mut ui_state: ResMut<UiState>, key_input: Res<Input<KeyCode>>) {
+fn ui_open(mut ui_state: ResMut<AppState>, key_input: Res<Input<KeyCode>>) {
     if key_input.just_pressed(KeyCode::O) {
-        ui_state.is_open = !ui_state.is_open;
+        *ui_state = match *ui_state {
+            AppState::TransparencyFixer => AppState::InGame,
+            _ => AppState::TransparencyFixer,
+        };
     }
 }
 
 fn load_external_level(mut img_data: ResMut<ImageData>, receiver: Res<WasmReceiver>) {
     for from_external in receiver.try_iter() {
-        let img = load_from_memory(&from_external)
+        let img = load_from_memory(&from_external.0)
             .expect("could not find image")
             .to_rgba8();
-        *img_data = ImageData::new(img);
+        let name = Path::new(&from_external.1).file_name().expect("WASM path is not a file").to_string_lossy().to_string();
+        *img_data = ImageData::new(img, name);
     }
 }
 
 fn load_dd_level(mut img_data: ResMut<ImageData>, mut dnd_evr: EventReader<FileDragAndDrop>) {
     for ev in dnd_evr.iter() {
         if let FileDragAndDrop::DroppedFile { path_buf, .. } = ev {
+            let name = path_buf.file_name().expect("DND path is not a file").to_string_lossy().to_string();
             println!("Dropped file with path: {:?}", path_buf);
             if let Some(filename) = path_buf.to_str() {
 
@@ -440,7 +461,7 @@ fn load_dd_level(mut img_data: ResMut<ImageData>, mut dnd_evr: EventReader<FileD
                     .decode()
                     .expect("could not decode image")
                     .to_rgba8();
-                *img_data = ImageData::new(img);
+                *img_data = ImageData::new(img, name);
             }
         }
     }
@@ -560,130 +581,130 @@ fn init_cloud(
 
     commands.entity(parent).push_children(&[spheres_id]);
 
-    {
-        let red = materials.add(StandardMaterial {
-            base_color: Color::Rgba {
-                red: 1.,
-                blue: 0.,
-                green: 0.,
-                alpha: 1.,
-            },
-            ..default()
-        });
-        let green = materials.add(StandardMaterial {
-            base_color: Color::Rgba {
-                red: 0.,
-                blue: 0.,
-                green: 1.,
-                alpha: 1.,
-            },
-            ..default()
-        });
-        let blue = materials.add(StandardMaterial {
-            base_color: Color::Rgba {
-                red: 0.,
-                blue: 1.,
-                green: 0.,
-                alpha: 1.,
-            },
-            ..default()
-        });
-
-
-        // commands.spawn((
-        //     PbrBundle {
-        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
-        //             radius: 5.,
-        //             height: 100.,
-        //             resolution: 16,
-        //             segments: 2,
-        //
-        //         })),
-        //         material: red,
-        //         transform: Transform::default().looking_at(
-        //             Vec3::new(1., 0., 0.,),
-        //             Vec3::ZERO
-        //         ),
-        //         ..default()
-        //     },
-        //     Shape,
-        // ));
-        // commands.spawn((
-        //     PbrBundle {
-        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
-        //             radius: 5.,
-        //             height: 100.,
-        //             resolution: 16,
-        //             segments: 2,
-        //
-        //         })),
-        //         material: green,
-        //         transform: Transform::default().looking_at(
-        //             Vec3::new(0., 1., 0.,),
-        //             Vec3::ZERO
-        //         ),
-        //         ..default()
-        //     },
-        //     Shape,
-        // ));
-        // commands.spawn((
-        //     PbrBundle {
-        //         mesh: meshes.add(Mesh::from(shape::Cylinder {
-        //             radius: 5.,
-        //             height: 100.,
-        //             resolution: 16,
-        //             segments: 2,
-        //
-        //         })),
-        //         material: blue,
-        //         transform: Transform::default().looking_at(
-        //             Vec3::new(1., 0., 0.,),
-        //             Vec3::ZERO
-        //         ),
-        //         ..default()
-        //     },
-        //     Shape,
-        // ));
-
-        let r = commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
-                                  Vec3::new(-1., -1., 0.,),
-                                  Vec3::new(1., 1., 100.,),
-                      ))),
-                material: red,
-                transform: Transform::from_xyz(0., 0., 0.,),
-                ..default()
-            },
-            Shape,
-        )).id();
-        let g = commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
-                                  Vec3::new(-1., 0., -1.,),
-                                  Vec3::new(1., 100., 1.,),
-                      ))),
-                material: green,
-                transform: Transform::from_xyz(0., 0., 0.,),
-                ..default()
-            },
-            Shape,
-        )).id();
-        let b = commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Box::from_corners(
-                                  Vec3::new(0., -1., -1.,),
-                                  Vec3::new(100., 1., 1.,),
-                      ))),
-                material: blue,
-                transform: Transform::from_xyz(0., 0., 0.,),
-                ..default()
-            },
-            Shape,
-        )).id();
-
-    commands.entity(parent).push_children(&[r, g, b]);
-    }
+    // {
+    //     let red = materials.add(StandardMaterial {
+    //         base_color: Color::Rgba {
+    //             red: 1.,
+    //             blue: 0.,
+    //             green: 0.,
+    //             alpha: 1.,
+    //         },
+    //         ..default()
+    //     });
+    //     let green = materials.add(StandardMaterial {
+    //         base_color: Color::Rgba {
+    //             red: 0.,
+    //             blue: 0.,
+    //             green: 1.,
+    //             alpha: 1.,
+    //         },
+    //         ..default()
+    //     });
+    //     let blue = materials.add(StandardMaterial {
+    //         base_color: Color::Rgba {
+    //             red: 0.,
+    //             blue: 1.,
+    //             green: 0.,
+    //             alpha: 1.,
+    //         },
+    //         ..default()
+    //     });
+    //
+    //
+    //     // commands.spawn((
+    //     //     PbrBundle {
+    //     //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+    //     //             radius: 5.,
+    //     //             height: 100.,
+    //     //             resolution: 16,
+    //     //             segments: 2,
+    //     //
+    //     //         })),
+    //     //         material: red,
+    //     //         transform: Transform::default().looking_at(
+    //     //             Vec3::new(1., 0., 0.,),
+    //     //             Vec3::ZERO
+    //     //         ),
+    //     //         ..default()
+    //     //     },
+    //     //     Shape,
+    //     // ));
+    //     // commands.spawn((
+    //     //     PbrBundle {
+    //     //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+    //     //             radius: 5.,
+    //     //             height: 100.,
+    //     //             resolution: 16,
+    //     //             segments: 2,
+    //     //
+    //     //         })),
+    //     //         material: green,
+    //     //         transform: Transform::default().looking_at(
+    //     //             Vec3::new(0., 1., 0.,),
+    //     //             Vec3::ZERO
+    //     //         ),
+    //     //         ..default()
+    //     //     },
+    //     //     Shape,
+    //     // ));
+    //     // commands.spawn((
+    //     //     PbrBundle {
+    //     //         mesh: meshes.add(Mesh::from(shape::Cylinder {
+    //     //             radius: 5.,
+    //     //             height: 100.,
+    //     //             resolution: 16,
+    //     //             segments: 2,
+    //     //
+    //     //         })),
+    //     //         material: blue,
+    //     //         transform: Transform::default().looking_at(
+    //     //             Vec3::new(1., 0., 0.,),
+    //     //             Vec3::ZERO
+    //     //         ),
+    //     //         ..default()
+    //     //     },
+    //     //     Shape,
+    //     // ));
+    //
+    //     let r = commands.spawn((
+    //         PbrBundle {
+    //             mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+    //                               Vec3::new(-1., -1., 0.,),
+    //                               Vec3::new(1., 1., 100.,),
+    //                   ))),
+    //             material: red,
+    //             transform: Transform::from_xyz(0., 0., 0.,),
+    //             ..default()
+    //         },
+    //         Shape,
+    //     )).id();
+    //     let g = commands.spawn((
+    //         PbrBundle {
+    //             mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+    //                               Vec3::new(-1., 0., -1.,),
+    //                               Vec3::new(1., 100., 1.,),
+    //                   ))),
+    //             material: green,
+    //             transform: Transform::from_xyz(0., 0., 0.,),
+    //             ..default()
+    //         },
+    //         Shape,
+    //     )).id();
+    //     let b = commands.spawn((
+    //         PbrBundle {
+    //             mesh: meshes.add(Mesh::from(shape::Box::from_corners(
+    //                               Vec3::new(0., -1., -1.,),
+    //                               Vec3::new(100., 1., 1.,),
+    //                   ))),
+    //             material: blue,
+    //             transform: Transform::from_xyz(0., 0., 0.,),
+    //             ..default()
+    //         },
+    //         Shape,
+    //     )).id();
+    //
+    // commands.entity(parent).push_children(&[r, g, b]);
+    // }
 
     // commands.insert_resource(CurrentImage(img));
 
@@ -712,18 +733,18 @@ fn win_check(parent_transform: Query<&Transform, With<MyParent>>, mut bg_brightn
         // let (x, y, z) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
         let (rot_vec, _f) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
         let rot_vec = rot_vec.normalize();
-        // println!("x,y,z = {:?}", rot_vec);
+        println!("x,y,z = {:?}", rot_vec);
         let mut dist = rot_vec.z;
         if dist > 0.5 {
             dist -= 1.;
         }
         dist = dist.abs();
-        if dist.abs() < 0.001 {
-                // println!("Angle correct. Hold to win");
+        if dist.abs() < 0.002 {
+                println!("Angle correct. Hold to win");
             bg_brightness.0 = bg_brightness.0.map(|b| b - 0.5);
             win_timer.0 += time.delta_seconds_f64();
             if win_timer.0 > 5. {
-                // println!("You Win!!");
+                println!("You Win!!");
             }
         } else if win_timer.0 > 0. {
             bg_brightness.0 = None;
