@@ -114,7 +114,9 @@ impl ImageData {
 #[derive(Resource, Default)]
 struct UiState {
     is_open: bool,
+    loaded: bool,
     img_handles: Option<[egui::TextureHandle; 6]>,
+    img_handle: Option<egui::TextureHandle>,
 }
 
 #[derive(Resource, Deref)]
@@ -155,7 +157,7 @@ fn main() {
                     }),
                     ..default()
                 }),
-            LogDiagnosticsPlugin::default(),
+            // LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
             CustomMaterialPlugin,
         ))
@@ -257,9 +259,7 @@ fn scale_image(src: &RgbaImage, scale: u32) -> RgbaImage {
     if scale == 1 {
         return src.clone();
     }
-    /*
-akj
-     * */
+
     let width = src.width() * scale;
     let height = src.height() * scale;
     let mut pixels = vec![image::Rgba([0, 0, 0, 0]); width as usize * height as usize];
@@ -276,17 +276,9 @@ akj
 }
 
 fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix_transparency: EventWriter<FixTransparencyEvent>, mut contexts: EguiContexts) {
-    let mut ctx = contexts.ctx_mut();
+    let ctx = contexts.ctx_mut();
     if img_data.is_changed() {
-        let img = &img_data.0;
-        let handles = [1, 2, 4, 8, 16, 32]
-            .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
-            .map(|img| ctx.load_texture(
-                            "current-image",
-                            img,
-                            Default::default(),
-                       ));
-        ui_state.img_handles = Some(handles);
+        ui_state.loaded = false;
     }
 
     if !ui_state.is_open {
@@ -297,45 +289,129 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
     egui::TopBottomPanel::top("header").show(ctx, |ui| {
         ui.heading("Select pixel to start transparency fix");
     });
+
+    let scale = {
+        let avail = ctx.available_rect();
+        let target_w = (avail.max.x - avail.min.x) as u32;
+        let target_h = (avail.max.y - avail.min.y) as u32;
+
+        let scale_w = target_w / img_data.0.width();
+        let scale_h = target_h / img_data.0.height();
+        scale_w.min(scale_h)
+    };
+    if !ui_state.loaded {
+        ui_state.loaded = true;
+
+        // let img = &img_data.0;
+        // let handles = [1, 2, 4, 8, 16, 32]
+        //     .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
+        //     .map(|img| ctx.load_texture(
+        //                     "current-image",
+        //                     img,
+        //                     Default::default(),
+        //                ));
+        // ui_state.img_handles = Some(handles);
+
+
+        let img = if scale > 1 {
+            image_to_egue_image_data(&scale_image(&img_data.0, scale))
+        } else {
+            image_to_egue_image_data(&img_data.0)
+
+        };
+        let img_handle = ctx.load_texture(
+            "current-image",
+            img,
+            Default::default(),
+            );
+        ui_state.img_handle = Some(img_handle);
+    }
+
     egui::CentralPanel::default().show(ctx, |ui| {
-        if let Some(img_handles) = &ui_state.img_handles {
-            let base_img = &img_handles[0];
-            let size_avail = ui.available_size();
-            let img_size = base_img.size_vec2();
-            let dx = size_avail[0] as usize / img_size[0] as usize;
-            let dy = size_avail[1] as usize / img_size[1] as usize;
-            let scale = dx.min(dy);
-            let handle_idx = {
-                if scale >= 32 {
-                    5
-                } else if scale >= 16 {
-                    4
-                } else if scale >= 8 {
-                    3
-                } else if scale >= 4 {
-                    2
-                } else if scale >= 2 {
-                    1
-                } else {
-                    0
-                }
-            };
-            let img_handle = &img_handles[handle_idx];
-            let img_size = img_handle.size_vec2();
-            let img = ui.add(egui::widgets::Image::new(
-                    img_handle.id(),
-                    img_size,
-                    )).interact(egui::Sense::click());
-            if img.clicked() {
-                if let Some(ipp) = img.interact_pointer_pos {
-                    let x = ((ipp[0] - img.rect.min.x)) as u32 / scale as u32;
-                    let y = ((ipp[1] - img.rect.min.y)) as u32 / scale as u32;
-                    ev_fix_transparency.send(FixTransparencyEvent(x, y));
+        // TODO: Handle too-big images via scroll.
+        // They don't work performance-wise but I want to do this.
+        egui::ScrollArea::neither().show(ui, |ui| {
+            if let Some(img_handle) = &ui_state.img_handle {
+                // let base_img = &img_handles[0];
+                // let size_avail = ui.available_size();
+                // let img_size = base_img.size_vec2();
+                // let dx = size_avail[0] as usize / img_size[0] as usize;
+                // let dy = size_avail[1] as usize / img_size[1] as usize;
+                // let scale = dx.min(dy);
+                // let handle_idx = {
+                //     if scale >= 32 {
+                //         5
+                //     } else if scale >= 16 {
+                //         4
+                //     } else if scale >= 8 {
+                //         3
+                //     } else if scale >= 4 {
+                //         2
+                //     } else if scale >= 2 {
+                //         1
+                //     } else {
+                //         0
+                //     }
+                // };
+                // let img_handle = &img_handles[handle_idx];
+
+                let img = ui.add(egui::widgets::Image::new(
+                        img_handle.id(),
+                        img_handle.size_vec2(),
+                        )).interact(egui::Sense::click());
+                if img.clicked() {
+                    if let Some(ipp) = img.interact_pointer_pos {
+                        let x = ((ipp[0] - img.rect.min.x)) as u32 / scale as u32;
+                        let y = ((ipp[1] - img.rect.min.y)) as u32 / scale as u32;
+                        println!("{:?} - {:?} / {} = {:?}\t{:?}", ipp, img.rect.min, scale, (x, y), img.rect.max);
+                        ev_fix_transparency.send(FixTransparencyEvent(x, y));
+                    }
                 }
             }
-
-        }
+        });
     });
+
+    // egui::CentralPanel::default().show(ctx, |ui| {
+    //     if let Some(img_handle) = &ui_state.img_handle {
+    //         // let base_img = &img_handles[0];
+    //         // let size_avail = ui.available_size();
+    //         // let img_size = base_img.size_vec2();
+    //         // let dx = size_avail[0] as usize / img_size[0] as usize;
+    //         // let dy = size_avail[1] as usize / img_size[1] as usize;
+    //         // let scale = dx.min(dy);
+    //         // let handle_idx = {
+    //         //     if scale >= 32 {
+    //         //         5
+    //         //     } else if scale >= 16 {
+    //         //         4
+    //         //     } else if scale >= 8 {
+    //         //         3
+    //         //     } else if scale >= 4 {
+    //         //         2
+    //         //     } else if scale >= 2 {
+    //         //         1
+    //         //     } else {
+    //         //         0
+    //         //     }
+    //         // };
+    //         // let img_handle = &img_handles[handle_idx];
+    //
+    //         ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
+    //             let img = ui.add(egui::widgets::Image::new(
+    //                     img_handle.id(),
+    //                     img_handle.size_vec2(),
+    //                     )).interact(egui::Sense::click());
+    //             if img.clicked() {
+    //                 if let Some(ipp) = img.interact_pointer_pos {
+    //                     let x = ((ipp[0] - img.rect.min.x)) as u32 / scale as u32;
+    //                     let y = ((ipp[1] - img.rect.min.y)) as u32 / scale as u32;
+    //                     println!("{:?} - {:?} / {} = {:?}\t{:?}", ipp, img.rect.min, scale, (x, y), img.rect.max);
+    //                     ev_fix_transparency.send(FixTransparencyEvent(x, y));
+    //                 }
+    //             }
+    //         });
+    //     }
+    // });
 }
 
 fn ui_open(mut ui_state: ResMut<UiState>, key_input: Res<Input<KeyCode>>) {
@@ -643,11 +719,11 @@ fn win_check(parent_transform: Query<&Transform, With<MyParent>>, mut bg_brightn
         }
         dist = dist.abs();
         if dist.abs() < 0.001 {
-                println!("Angle correct. Hold to win");
+                // println!("Angle correct. Hold to win");
             bg_brightness.0 = bg_brightness.0.map(|b| b - 0.5);
             win_timer.0 += time.delta_seconds_f64();
             if win_timer.0 > 5. {
-                println!("You Win!!");
+                // println!("You Win!!");
             }
         } else if win_timer.0 > 0. {
             bg_brightness.0 = None;
