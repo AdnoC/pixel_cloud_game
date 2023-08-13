@@ -317,6 +317,7 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
                     0
                 }
             };
+            let handle_idx = 0;
             let img_handle = &img_handles[handle_idx];
             let img_size = img_handle.size_vec2();
             let img_size = img_size * std::cmp::min(dx, dy) as f32;
