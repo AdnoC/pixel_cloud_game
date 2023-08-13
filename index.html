@@ -130,7 +130,7 @@
       <div>
         <h1>Directions</h2>
         <div>
-          <h2>To load a new image:</h2>
+          <h2>To load a new image</h2>
           <p>
             <label>Select an image on your computer: <input type="file" id="file" name="New Image" accept="image/*" /></label>
           </p>
@@ -141,8 +141,14 @@
         </div>
         <div>
           <h2>Options</h2>
+          <h3>To remove non-transparent backgrounds</h3>
+          <p>
+          The "O" key opens the transparency fixer.
+          Click on the parts of the image that should be transparent.
+          </p>
         </div>
       </div>
+
       <script>
         const input = document.getElementById("file");
         input.onchange = newImageSelected;

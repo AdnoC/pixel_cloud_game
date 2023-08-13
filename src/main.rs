@@ -508,7 +508,7 @@ fn init_cloud(
         );
 
 
-        //parent_bundle.transform.rotation = quat;
+        parent_bundle.transform.rotation = quat;
 
         parent_bundle
     };
