@@ -260,14 +260,14 @@ fn scale_image(src: &RgbaImage, scale: u32) -> RgbaImage {
     /*
 akj
      * */
-    let mut pixels = vec![image::Rgba([0, 0, 0, 0]); src.as_raw().len() * scale as usize];
     let width = src.width() * scale;
     let height = src.height() * scale;
+    let mut pixels = vec![image::Rgba([0, 0, 0, 0]); width as usize * height as usize];
     for (src_x, src_y, pixel) in src.enumerate_pixels() {
-        for py in src_y..(src_y + scale - 1) {
-            let start = (py * width + src_x) as usize;
+        let start_y = src_y * scale;
+        for py in start_y..(start_y + scale) {
+            let start = (py * width + src_x * scale) as usize;
             let end = start + scale as usize - 1;
-            // println!("px.len = {}, ({}..={})", pixels.len(), start, end);
             let _ = &pixels[start..=end].fill(*pixel);
         }
     }
@@ -278,11 +278,11 @@ fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix
     let mut ctx = contexts.ctx_mut();
     if img_data.is_changed() {
         let img = &img_data.0;
-        let handles = [1, 2, 4, 4, 4]
+        let handles = [1, 2, 4, 8, 16/*, 32*/]
             .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
             .map(|img| ctx.load_texture(
                             "current-image",
-                            image_to_egue_image_data(&img),
+                            img,
                             Default::default(),
                        ));
         ui_state.img_handles = Some(handles);
