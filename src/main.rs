@@ -42,6 +42,7 @@ use bevy::{
     },
     window::CursorGrabMode,
 };
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiSettings};
 use image::{io::Reader as ImageReader, Rgba, RgbaImage, load_from_memory, SubImage};
 use std::io::Cursor;
 use palette::{IntoColor, Srgb};
@@ -69,6 +70,9 @@ struct MyParent;
 
 #[derive(Component)]
 struct MyCamera;
+
+#[derive(Event)]
+struct FixTransparencyEvent(pub u32, pub u32);
 
 #[derive(Resource)]
 struct ImageData(RgbaImage);
@@ -106,6 +110,13 @@ impl ImageData {
     }
 }
 
+
+#[derive(Resource, Default)]
+struct UiState {
+    is_open: bool,
+    img_handles: Option<[egui::TextureHandle; 5]>,
+}
+
 #[derive(Resource, Deref)]
 struct WasmReceiver(Receiver<Vec<u8>>);
 
@@ -125,6 +136,7 @@ mod wasm {
 }
 
 static IMG_QUEUE: OnceLock<Sender<Vec<u8>>> = OnceLock::new();
+
 
 fn main() {
     let img = load_from_memory(include_bytes!("../goomba.png"))
@@ -147,12 +159,16 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             CustomMaterialPlugin,
         ))
+        .add_plugins(EguiPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, init_cloud)
+        .add_event::<FixTransparencyEvent>()
         .insert_resource(ImageData(img))
         .insert_resource(WinTimer(0.0))
+        .insert_resource(UiState::default())
         // .add_systems(Startup, setup)
-        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate, win_check));
+        .add_systems(Update, (ui_system, ui_open))
+        .add_systems(Update, (load_external_level, load_dd_level, mouse_grab, mouse_input, rotate, win_check, apply_transparency_fix));
 
         //#[cfg(not(target_family = "wasm"))]
         {
@@ -161,11 +177,174 @@ fn main() {
         app.run();
 }
 
-
 fn setup(mut commands: Commands) {
     let (tx, rx) = bounded::<Vec<u8>>(10);
     commands.insert_resource(WasmReceiver(rx));
     IMG_QUEUE.set(tx).expect("could not initialize wasm image queue");
+}
+
+fn ui_setup(mut commands: Commands) {
+
+    let size = Extent3d {
+        width: 512,
+        height: 512,
+        ..default()
+    };
+
+    // This is the texture that will be rendered to.
+    let mut image = Image {
+        texture_descriptor: TextureDescriptor {
+            label: None,
+            size,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Bgra8UnormSrgb,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_DST
+                | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        },
+        ..default()
+    };
+
+    // fill image.data with zeroes
+    image.resize(size);
+
+}
+
+fn apply_transparency_fix(mut ev_fix_transparency: EventReader<FixTransparencyEvent>, mut img_data: ResMut<ImageData>) {
+    for ev in ev_fix_transparency.iter() {
+        let img = &mut img_data.0;
+        let clear = Rgba([0, 0, 0, 0]);
+        let color = img.get_pixel(ev.0, ev.1).clone();
+
+        let width = img.width();
+        let height = img.height();
+        let mut stack = vec![(ev.0, ev.1)];
+        while let Some((x, y)) = stack.pop() {
+            let pix = img.get_pixel(x, y);
+            if pix[3] > 0 && *pix == color {
+                img.put_pixel(x, y, clear);
+                if x > 0 {
+                    stack.push((x - 1, y));
+                }
+                if y > 0 {
+                    stack.push((x, y - 1));
+                }
+                if x < width - 1 {
+                    stack.push((x + 1, y));
+                }
+                if y < height - 1 {
+                    stack.push((x, y + 1));
+                }
+            }
+        }
+    }
+}
+
+fn image_to_egue_image_data(img: &RgbaImage) -> egui::ImageData {
+    use egui::{ColorImage, Color32, ImageData::Color};
+
+    let img_data = ColorImage {
+        size: [img.width() as usize, img.height() as usize],
+        pixels: img.pixels().map(|p| Color32::from_rgba_premultiplied(p[0], p[1], p[2], p[3])).collect(),
+    };
+    Color(img_data)
+}
+
+fn scale_image(src: &RgbaImage, scale: u32) -> RgbaImage {
+    if scale == 1 {
+        return src.clone();
+    }
+    /*
+akj
+     * */
+    let mut pixels = vec![image::Rgba([0, 0, 0, 0]); src.as_raw().len() * scale as usize];
+    let width = src.width() * scale;
+    let height = src.height() * scale;
+    for (src_x, src_y, pixel) in src.enumerate_pixels() {
+        for py in src_y..(src_y + scale - 1) {
+            let start = (py * width + src_x) as usize;
+            let end = start + scale as usize - 1;
+            // println!("px.len = {}, ({}..={})", pixels.len(), start, end);
+            let _ = &pixels[start..=end].fill(*pixel);
+        }
+    }
+    RgbaImage::from_vec(width, height, pixels.iter().flat_map(|p| p.0).collect()).expect("resized image not valid")
+}
+
+fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix_transparency: EventWriter<FixTransparencyEvent>, mut contexts: EguiContexts) {
+    let mut ctx = contexts.ctx_mut();
+    if img_data.is_changed() {
+         let img_handles = ctx.load_texture(
+                "current-image",
+                image_to_egue_image_data(&img_data.0),
+                Default::default(),
+            );
+         let img = &img_data.0;
+        let handles = [1, 2, 4, 4, 4]
+            .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
+            .map(|img| ctx.load_texture(
+                            "current-image",
+                            image_to_egue_image_data(&img_data.0),
+                            Default::default(),
+                       ));
+        ui_state.img_handles = Some(handles);
+    }
+
+    if !ui_state.is_open {
+        return;
+    }
+
+
+    egui::TopBottomPanel::top("header").show(ctx, |ui| {
+        ui.heading("Select pixel to start transparency fix");
+    });
+    egui::CentralPanel::default().show(ctx, |ui| {
+        if let Some(img_handles) = &ui_state.img_handles {
+            let base_img = &img_handles[0];
+            let size_avail = ui.available_size();
+            let img_size = base_img.size_vec2();
+            let dx = size_avail[0] as usize / img_size[0] as usize;
+            let dy = size_avail[1] as usize / img_size[1] as usize;
+            let scale = dx.min(dy);
+            let handle_idx = {
+                if scale >= 16 {
+                    4
+                } else if scale >= 8 {
+                    3
+                } else if scale >= 4 {
+                    2
+                } else if scale >= 2 {
+                    1
+                } else {
+                    0
+                }
+            };
+            let img_handle = &img_handles[handle_idx];
+            let img_size = img_handle.size_vec2();
+            let img_size = img_size * std::cmp::min(dx, dy) as f32;
+            let img = ui.add(egui::widgets::Image::new(
+                    img_handle.id(),
+                    img_size,
+                    )).interact(egui::Sense::click());
+            if img.clicked() {
+                if let Some(ipp) = img.interact_pointer_pos {
+                    let x = ((ipp[0] - img.rect.min.x)) as u32 / scale as u32;
+                    let y = ((ipp[1] - img.rect.min.y)) as u32 / scale as u32;
+                    ev_fix_transparency.send(FixTransparencyEvent(x, y));
+                }
+            }
+
+        }
+    });
+}
+
+fn ui_open(mut ui_state: ResMut<UiState>, key_input: Res<Input<KeyCode>>) {
+    if key_input.just_pressed(KeyCode::O) {
+        ui_state.is_open = !ui_state.is_open;
+    }
 }
 
 fn load_external_level(mut img_data: ResMut<ImageData>, receiver: Res<WasmReceiver>) {

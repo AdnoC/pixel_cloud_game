@@ -7,8 +7,10 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.11.0"
+bevy_egui = "0.21.0"
 bytemuck = "1.13.1"
 crossbeam-channel = "0.5.8"
+egui = "0.22.0"
 image = "0.24.6"
 palette = "0.7.2"
 rand = "0.8.5"
