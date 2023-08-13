@@ -277,17 +277,12 @@ akj
 fn ui_system(mut ui_state: ResMut<UiState>, img_data: Res<ImageData>, mut ev_fix_transparency: EventWriter<FixTransparencyEvent>, mut contexts: EguiContexts) {
     let mut ctx = contexts.ctx_mut();
     if img_data.is_changed() {
-         let img_handles = ctx.load_texture(
-                "current-image",
-                image_to_egue_image_data(&img_data.0),
-                Default::default(),
-            );
-         let img = &img_data.0;
+        let img = &img_data.0;
         let handles = [1, 2, 4, 4, 4]
             .map(|scale| image_to_egue_image_data(&scale_image(img, scale)))
             .map(|img| ctx.load_texture(
                             "current-image",
-                            image_to_egue_image_data(&img_data.0),
+                            image_to_egue_image_data(&img),
                             Default::default(),
                        ));
         ui_state.img_handles = Some(handles);
