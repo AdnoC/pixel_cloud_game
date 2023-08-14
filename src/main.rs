@@ -508,7 +508,7 @@ fn init_cloud(
         );
 
 
-        parent_bundle.transform.rotation = quat;
+        // parent_bundle.transform.rotation = quat;
 
         parent_bundle
     };
@@ -732,16 +732,10 @@ fn init_cloud(
 
 fn win_check(parent_transform: Query<&Transform, With<MyParent>>, mut bg_brightness: ResMut<background::BackgroundBrightness>, mut win_timer: ResMut<WinTimer>, time: Res<Time>) {
     for transform in &parent_transform {
-        // let (x, y, z) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
-        let (rot_vec, _f) = transform.rotation.to_axis_angle();//.to_euler(EulerRot::XYZ);
-        let rot_vec = rot_vec.normalize();
-        println!("x,y,z = {:?}", rot_vec);
-        let mut dist = rot_vec.z;
-        if dist > 0.5 {
-            dist -= 1.;
-        }
-        dist = dist.abs();
-        if dist.abs() < 0.002 {
+        let (rot_vec, _f) = transform.rotation.to_axis_angle();
+        let angle = rot_vec.normalize().cross(Vec3::X).z;
+        println!("angle = {}", angle);
+        if angle.abs() < 0.02 {
                 println!("Angle correct. Hold to win");
             bg_brightness.0 = bg_brightness.0.map(|b| b - 0.5);
             win_timer.0 += time.delta_seconds_f64();
