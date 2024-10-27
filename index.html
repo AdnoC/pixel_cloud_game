@@ -30,17 +30,17 @@
         window.loadImage = load_image;
         async function keepAlive() {
           while (true) {
-          try {
-            await init()
-          } catch(e) {
-            // Just restart the game if an out-of-memory error occurred
-            if (!e.stack.includes("_rg_oom")) {
-              console.error("An error occurred");
-              throw e;
-            } else {
-              console.log("Out-of-memory error ocurred. Restarting game.");
+            try {
+              await init()
+            } catch(e) {
+              // Just restart the game if an out-of-memory error occurred
+              if (!e.stack.includes("_rg_oom")) {
+                console.error("An error occurred");
+                throw e;
+              } else {
+                console.log("Out-of-memory error ocurred. Restarting game.");
+              }
             }
-          }
           }
         }
         keepAlive();
@@ -136,7 +136,7 @@
             <label>Select an image on your computer: <input type="file" id="file" name="New Image" accept="image/*" /></label>
           </p>
           <p>
-          <label>Link to an image online (may not work (thanks CORS)): <input type="text" id="url" placeholder="https://example.com/image.png" onkeydown="handleKeyDown(event)" /></label>
+          <label>Link to an image online (CORS may cause this to fail): <input type="text" id="url" placeholder="https://example.com/image.png" onkeydown="handleKeyDown(event)" /></label>
           </p>
           <p>Or drop an image onto the page</p>
         </div>
